@@ -1,0 +1,2144 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Criar projeto
+        run: |
+          mkdir -p proj/src/main/java/com/legitclient proj/src/main/resources
+
+          cat > proj/build.gradle <<'LEGITEOF'
+          buildscript {
+              repositories {
+                  jcenter()
+                  mavenCentral()
+                  maven { name = "forge"; url = "https://maven.minecraftforge.net/" }
+                  maven { name = "forge-old"; url = "https://files.minecraftforge.net/maven" }
+              }
+              dependencies {
+                  classpath 'net.minecraftforge.gradle:ForgeGradle:2.1-SNAPSHOT'
+              }
+          }
+
+          apply plugin: 'net.minecraftforge.gradle.forge'
+
+          version = "1.0.0"
+          group = "com.legitclient"
+          archivesBaseName = "LegitClient"
+
+          sourceCompatibility = targetCompatibility = '1.8'
+          compileJava.options.encoding = 'UTF-8'
+
+          minecraft {
+              version = "1.8.9-11.15.1.2318-1.8.9"
+              runDir = "run"
+              mappings = "stable_22"
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              inputs.property "mcversion", project.minecraft.version
+
+              from(sourceSets.main.resources.srcDirs) {
+                  include 'mcmod.info'
+                  expand 'version': project.version, 'mcversion': project.minecraft.version
+              }
+              from(sourceSets.main.resources.srcDirs) {
+                  exclude 'mcmod.info'
+              }
+          }
+          LEGITEOF
+          cat > proj/src/main/resources/mcmod.info <<'LEGITEOF'
+          [
+            {
+              "modid": "legitclient",
+              "name": "Legit Client",
+              "description": "Client legit: HUD, keystrokes, zoom, toggle sprint e FPS boost. Sem hacks.",
+              "version": "${version}",
+              "mcversion": "${mcversion}",
+              "authorList": [],
+              "credits": ""
+            }
+          ]
+          LEGITEOF
+          cat > proj/src/main/java/com/legitclient/ModConfig.java <<'LEGITEOF'
+          package com.legitclient;
+
+          import net.minecraftforge.common.config.Configuration;
+
+          import java.io.File;
+          import java.util.HashMap;
+          import java.util.Map;
+
+          public class ModConfig {
+              public static boolean fps = true;
+              public static boolean cps = true;
+              public static boolean coords = true;
+              public static boolean keystrokes = true;
+              public static boolean armor = true;
+              public static boolean potions = true;
+              public static boolean toggleSprint = false;
+              public static boolean zoom = true;
+              public static boolean fpsBoostOnStart = false;
+              public static int renderDistance = 6;
+
+              // animações (estilo OverflowAnimations)
+              public static boolean noReequip = false;
+              public static boolean modernBackwalk = false;
+              public static int swingSpeed = 100;
+              public static boolean itemCustom = false;
+              public static int itemX = 0, itemY = 0, itemZ = 0;
+              public static int itemRotX = 0, itemRotY = 0, itemRotZ = 0;
+              public static int itemScale = 100;
+
+              // módulos extras (ligam/desligam por chave)
+              public static final String[][] EXTRA_MODS = {
+                      {"#", "Informações"},
+                      {"ping", "Ping"},
+                      {"relogio", "Relógio"},
+                      {"sessao", "Tempo de sessão"},
+                      {"dia", "Dia e hora do jogo"},
+                      {"velocidade", "Velocidade (blocos/s)"},
+                      {"distancia", "Distância andada"},
+                      {"bioma", "Bioma"},
+                      {"dimensao", "Dimensão"},
+                      {"nether", "Coordenadas do Nether"},
+                      {"chunk", "Coordenadas do chunk"},
+                      {"luz", "Nível de luz"},
+                      {"angulos", "Yaw / Pitch"},
+                      {"servidor", "IP do servidor"},
+                      {"online", "Jogadores online"},
+                      {"blocoalvo", "Bloco mirado"},
+                      {"entalvo", "Nome da entidade mirada"},
+                      {"#", "Status do jogador"},
+                      {"vida", "Vida numérica"},
+                      {"fome", "Fome e saturação"},
+                      {"xp", "Nível de XP"},
+                      {"itemmao", "Item na mão e durabilidade"},
+                      {"blocosqtd", "Quantidade do item na mão"},
+                      {"contadores", "Contadores de itens"},
+                      {"armorpct", "Armadura em % de durabilidade"},
+                      {"#", "Combate"},
+                      {"combo", "Combo"},
+                      {"alcance", "Alcance do último hit"},
+                      {"hitstotal", "Hits e combo máximo"},
+                      {"critparts", "Partículas de crítico no hit"},
+                      {"magparts", "Partículas mágicas no hit"},
+                      {"somhit", "Som ao acertar"},
+                      {"#", "Desempenho"},
+                      {"fpsstats", "FPS mín / média / máx"},
+                      {"frametime", "Frametime (ms)"},
+                      {"fpsgraph", "Gráfico de FPS"},
+                      {"memoria", "Memória RAM"},
+                      {"#", "Visual"},
+                      {"mira", "Mira personalizada"},
+                      {"contorno", "Contorno de bloco colorido"},
+                      {"bussola", "Bússola"},
+                      {"vidabaixa", "Aviso de vida baixa"},
+                      {"fovfixo", "FOV fixo (sem efeito de velocidade)"},
+                      {"semmao", "Esconder mão"},
+                      {"semchuva", "Sem chuva"},
+                      {"semfogo", "Sem fogo na tela"},
+                      {"semportal", "Sem overlay de portal"},
+                      {"semabobora", "Sem overlay de abóbora"},
+                      {"#", "Aparência do HUD"},
+                      {"hudfundo", "Fundo do HUD"},
+                      {"semsombra", "Texto sem sombra"},
+                      {"rainbow", "HUD arco-íris"},
+                      {"#", "Controles e chat"},
+                      {"sneaktoggle", "Agachar alternado"},
+                      {"zoomduro", "Zoom sem câmera suave"},
+                      {"chathora", "Horário no chat"},
+                      {"mencao", "Som ao ser mencionado"},
+                      {"chatdup", "Ocultar mensagens repetidas"},
+                      {"morte", "Coordenadas da morte no chat"},
+                      {"durabaixa", "Aviso de durabilidade baixa"},
+                      {"pausa", "Lembrete de pausa (30 min)"}
+              };
+              private static final Map<String, Boolean> flags = new HashMap<String, Boolean>();
+
+              public static final int[] COLORS = {0xFFFFFF, 0xFF5555, 0x55FF55, 0x55FFFF, 0xFFFF55, 0xFF55FF, 0x5555FF, 0xFFAA00};
+              public static final String[] COLOR_NAMES = {"Branco", "Vermelho", "Verde", "Ciano", "Amarelo", "Rosa", "Azul", "Laranja"};
+
+              public static int hudScale = 100;
+              public static int hudColor = 0;
+              public static int crossStyle = 0;
+              public static int crossColor = 2;
+              public static int crossSize = 5;
+              public static int outlineColor = 3;
+              public static int fixedTime = 0;
+              public static int zoomLevel = 4;
+              public static int hudX = 0;
+              public static int hudY = 0;
+              public static int partCount = 1;
+
+              public static boolean flag(String key) {
+                  Boolean b = flags.get(key);
+                  return b != null && b;
+              }
+
+              public static void toggleFlag(String key) {
+                  flags.put(key, !flag(key));
+              }
+
+              public static int rgb(int idx) {
+                  return COLORS[Math.max(0, Math.min(COLORS.length - 1, idx))];
+              }
+
+              public static int hudRgb() {
+                  if (flag("rainbow")) return hsv((System.currentTimeMillis() % 4000L) / 4000f, 0.65f, 1f);
+                  return rgb(hudColor);
+              }
+
+              private static int hsv(float h, float s, float v) {
+                  int i = (int) (h * 6f);
+                  float f = h * 6f - i;
+                  float p = v * (1f - s), q = v * (1f - f * s), t = v * (1f - (1f - f) * s);
+                  float r, g, b;
+                  switch (i % 6) {
+                      case 0: r = v; g = t; b = p; break;
+                      case 1: r = q; g = v; b = p; break;
+                      case 2: r = p; g = v; b = t; break;
+                      case 3: r = p; g = q; b = v; break;
+                      case 4: r = t; g = p; b = v; break;
+                      default: r = v; g = p; b = q; break;
+                  }
+                  return ((int) (r * 255f) << 16) | ((int) (g * 255f) << 8) | (int) (b * 255f);
+              }
+
+              private static Configuration cfg;
+
+              public static void load(File file) {
+                  cfg = new Configuration(file);
+                  fps = cfg.get("modulos", "fps", true).getBoolean();
+                  cps = cfg.get("modulos", "cps", true).getBoolean();
+                  coords = cfg.get("modulos", "coordenadas", true).getBoolean();
+                  keystrokes = cfg.get("modulos", "keystrokes", true).getBoolean();
+                  armor = cfg.get("modulos", "armadura", true).getBoolean();
+                  potions = cfg.get("modulos", "pocoes", true).getBoolean();
+                  toggleSprint = cfg.get("modulos", "toggleSprint", false).getBoolean();
+                  zoom = cfg.get("modulos", "zoom", true).getBoolean();
+                  fpsBoostOnStart = cfg.get("fpsboost", "aplicarAoIniciar", false).getBoolean();
+                  renderDistance = cfg.get("fpsboost", "distanciaDeRenderizacao", 6).getInt();
+                  noReequip = cfg.get("animacoes", "semAnimacaoTrocarItem", false).getBoolean();
+                  modernBackwalk = cfg.get("animacoes", "andarDeCostasModerno", false).getBoolean();
+                  swingSpeed = cfg.get("animacoes", "velocidadeSwing", 100).getInt();
+                  itemCustom = cfg.get("animacoes", "itemPersonalizado", false).getBoolean();
+                  itemX = cfg.get("animacoes", "itemX", 0).getInt();
+                  itemY = cfg.get("animacoes", "itemY", 0).getInt();
+                  itemZ = cfg.get("animacoes", "itemZ", 0).getInt();
+                  itemRotX = cfg.get("animacoes", "itemRotX", 0).getInt();
+                  itemRotY = cfg.get("animacoes", "itemRotY", 0).getInt();
+                  itemRotZ = cfg.get("animacoes", "itemRotZ", 0).getInt();
+                  itemScale = cfg.get("animacoes", "itemTamanho", 100).getInt();
+                  for (String[] m : EXTRA_MODS) {
+                      if (m[0].startsWith("#")) continue;
+                      flags.put(m[0], cfg.get("extras", m[0], false).getBoolean());
+                  }
+                  zoomLevel = Math.max(2, Math.min(10, cfg.get("extras", "nivelZoom", 4).getInt()));
+                  hudX = Math.max(0, Math.min(600, cfg.get("extras", "hudX", 0).getInt()));
+                  hudY = Math.max(0, Math.min(400, cfg.get("extras", "hudY", 0).getInt()));
+                  partCount = Math.max(1, Math.min(5, cfg.get("extras", "particulasPorHit", 1).getInt()));
+                  hudScale = Math.max(50, Math.min(200, cfg.get("extras", "tamanhoHud", 100).getInt()));
+                  hudColor = cfg.get("extras", "corHud", 0).getInt();
+                  crossStyle = Math.max(0, Math.min(2, cfg.get("extras", "miraEstilo", 0).getInt()));
+                  crossColor = cfg.get("extras", "miraCor", 2).getInt();
+                  crossSize = Math.max(2, Math.min(12, cfg.get("extras", "miraTamanho", 5).getInt()));
+                  outlineColor = cfg.get("extras", "contornoCor", 3).getInt();
+                  fixedTime = Math.max(0, Math.min(3, cfg.get("extras", "horaFixa", 0).getInt()));
+                  if (cfg.hasChanged()) cfg.save();
+              }
+
+              public static void save() {
+                  if (cfg == null) return;
+                  cfg.get("modulos", "fps", true).set(fps);
+                  cfg.get("modulos", "cps", true).set(cps);
+                  cfg.get("modulos", "coordenadas", true).set(coords);
+                  cfg.get("modulos", "keystrokes", true).set(keystrokes);
+                  cfg.get("modulos", "armadura", true).set(armor);
+                  cfg.get("modulos", "pocoes", true).set(potions);
+                  cfg.get("modulos", "toggleSprint", false).set(toggleSprint);
+                  cfg.get("modulos", "zoom", true).set(zoom);
+                  cfg.get("fpsboost", "aplicarAoIniciar", false).set(fpsBoostOnStart);
+                  cfg.get("fpsboost", "distanciaDeRenderizacao", 6).set(renderDistance);
+                  cfg.get("animacoes", "semAnimacaoTrocarItem", false).set(noReequip);
+                  cfg.get("animacoes", "andarDeCostasModerno", false).set(modernBackwalk);
+                  cfg.get("animacoes", "velocidadeSwing", 100).set(swingSpeed);
+                  cfg.get("animacoes", "itemPersonalizado", false).set(itemCustom);
+                  cfg.get("animacoes", "itemX", 0).set(itemX);
+                  cfg.get("animacoes", "itemY", 0).set(itemY);
+                  cfg.get("animacoes", "itemZ", 0).set(itemZ);
+                  cfg.get("animacoes", "itemRotX", 0).set(itemRotX);
+                  cfg.get("animacoes", "itemRotY", 0).set(itemRotY);
+                  cfg.get("animacoes", "itemRotZ", 0).set(itemRotZ);
+                  cfg.get("animacoes", "itemTamanho", 100).set(itemScale);
+                  for (String[] m : EXTRA_MODS) {
+                      if (m[0].startsWith("#")) continue;
+                      cfg.get("extras", m[0], false).set(flag(m[0]));
+                  }
+                  cfg.get("extras", "nivelZoom", 4).set(zoomLevel);
+                  cfg.get("extras", "hudX", 0).set(hudX);
+                  cfg.get("extras", "hudY", 0).set(hudY);
+                  cfg.get("extras", "particulasPorHit", 1).set(partCount);
+                  cfg.get("extras", "tamanhoHud", 100).set(hudScale);
+                  cfg.get("extras", "corHud", 0).set(hudColor);
+                  cfg.get("extras", "miraEstilo", 0).set(crossStyle);
+                  cfg.get("extras", "miraCor", 2).set(crossColor);
+                  cfg.get("extras", "miraTamanho", 5).set(crossSize);
+                  cfg.get("extras", "contornoCor", 3).set(outlineColor);
+                  cfg.get("extras", "horaFixa", 0).set(fixedTime);
+                  cfg.save();
+              }
+          }
+          LEGITEOF
+          cat > proj/src/main/java/com/legitclient/FpsBoost.java <<'LEGITEOF'
+          package com.legitclient;
+
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.settings.GameSettings;
+          import org.lwjgl.opengl.Display;
+
+          /** Só mexe nas opções de vídeo do próprio jogo (nada de hack). */
+          public class FpsBoost {
+              public static void apply() {
+                  Minecraft mc = Minecraft.getMinecraft();
+                  GameSettings gs = mc.gameSettings;
+                  if (gs == null) return;
+
+                  gs.fancyGraphics = false;
+                  gs.clouds = 0;
+                  gs.particleSetting = 1;
+                  gs.ambientOcclusion = 0;
+                  gs.entityShadows = false;
+                  gs.useVbo = true;
+                  gs.enableVsync = false;
+                  gs.limitFramerate = 260;
+                  gs.renderDistanceChunks = Math.min(gs.renderDistanceChunks, ModConfig.renderDistance);
+                  try {
+                      Display.setVSyncEnabled(false);
+                  } catch (Throwable ignored) {
+                  }
+                  gs.saveOptions();
+                  if (mc.renderGlobal != null && mc.theWorld != null) {
+                      mc.renderGlobal.loadRenderers();
+                  }
+              }
+          }
+          LEGITEOF
+          cat > proj/src/main/java/com/legitclient/Animations.java <<'LEGITEOF'
+          package com.legitclient;
+
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.entity.EntityPlayerSP;
+          import net.minecraft.client.renderer.ItemRenderer;
+          import net.minecraft.client.renderer.block.model.ItemTransformVec3f;
+          import net.minecraft.entity.player.EntityPlayer;
+          import net.minecraft.client.resources.model.IBakedModel;
+          import net.minecraft.item.ItemStack;
+          import net.minecraftforge.client.event.RenderHandEvent;
+          import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+          import net.minecraftforge.fml.common.gameevent.TickEvent;
+          import net.minecraftforge.fml.relauncher.ReflectionHelper;
+
+          import java.lang.reflect.Field;
+          import java.util.IdentityHashMap;
+          import java.util.Map;
+
+          /**
+           * Animações estilo OverflowAnimations, só com eventos do Forge (sem Mixin, sem OneConfig),
+           * pra funcionar no Pojav. Tudo é visual do lado do cliente.
+           */
+          public class Animations {
+              private final Minecraft mc = Minecraft.getMinecraft();
+
+              private final Map<ItemTransformVec3f, float[]> base = new IdentityHashMap<ItemTransformVec3f, float[]>();
+              private boolean dirty;
+
+              private boolean reflectReady, reflectFailed;
+              private Field fEquipped, fPrev, fItem, fSlot;
+
+              private float swingAcc;
+
+              private void initReflection() {
+                  if (reflectReady) return;
+                  reflectReady = true;
+                  try {
+                      fEquipped = ReflectionHelper.findField(ItemRenderer.class, "equippedProgress", "field_78454_c");
+                      fPrev = ReflectionHelper.findField(ItemRenderer.class, "prevEquippedProgress", "field_78451_d");
+                      fItem = ReflectionHelper.findField(ItemRenderer.class, "itemToRender", "field_78453_b");
+                      fSlot = ReflectionHelper.findField(ItemRenderer.class, "equippedItemSlot", "field_78450_g");
+                  } catch (Throwable t) {
+                      reflectFailed = true;
+                  }
+              }
+
+              @SubscribeEvent
+              public void onTick(TickEvent.ClientTickEvent e) {
+                  if (e.phase != TickEvent.Phase.END) return;
+                  EntityPlayerSP p = mc.thePlayer;
+                  if (p == null) return;
+
+                  // Andar de costas moderno: o corpo não vira de lado ao andar pra trás
+                  if (ModConfig.modernBackwalk && mc.theWorld != null) {
+                      for (Object o : mc.theWorld.playerEntities) {
+                          EntityPlayer pl = (EntityPlayer) o;
+                          if (pl.isRiding() || pl.isPlayerSleeping()) continue;
+                          double dx = pl.posX - pl.prevPosX;
+                          double dz = pl.posZ - pl.prevPosZ;
+                          if (dx * dx + dz * dz < 0.0025) continue;
+                          float look = pl == p ? pl.rotationYaw : pl.rotationYawHead;
+                          double r = Math.toRadians(look);
+                          double fwd = -Math.sin(r) * dx + Math.cos(r) * dz;
+                          if (fwd < -0.02) {
+                              pl.renderYawOffset = look;
+                          }
+                      }
+                  }
+
+                  // Velocidade do swing (só visual)
+                  if (ModConfig.swingSpeed != 100 && p.isSwingInProgress) {
+                      swingAcc += ModConfig.swingSpeed / 100f - 1f;
+                      if (swingAcc >= 1f) {
+                          p.swingProgressInt++;
+                          swingAcc -= 1f;
+                      } else if (swingAcc <= -1f) {
+                          if (p.swingProgressInt > 0) p.swingProgressInt--;
+                          swingAcc += 1f;
+                      }
+                  } else {
+                      swingAcc = 0f;
+                  }
+
+                  // Sem animação ao trocar de item
+                  if (ModConfig.noReequip && !reflectFailed && mc.getItemRenderer() != null) {
+                      try {
+                          initReflection();
+                          if (!reflectFailed) {
+                              ItemRenderer ir = mc.getItemRenderer();
+                              fItem.set(ir, p.getHeldItem());
+                              fSlot.setInt(ir, p.inventory.currentItem);
+                              fEquipped.setFloat(ir, 1.0f);
+                              fPrev.setFloat(ir, 1.0f);
+                          }
+                      } catch (Throwable t) {
+                          reflectFailed = true;
+                      }
+                  }
+              }
+
+              @SubscribeEvent
+              public void onRenderHand(RenderHandEvent e) {
+                  if (!ModConfig.itemCustom) {
+                      if (dirty) restore();
+                      return;
+                  }
+                  EntityPlayerSP p = mc.thePlayer;
+                  if (p == null) return;
+                  ItemStack s = p.getHeldItem();
+                  if (s == null) return;
+                  try {
+                      IBakedModel m = mc.getRenderItem().getItemModelMesher().getItemModel(s);
+                      if (m == null) return;
+                      ItemTransformVec3f t = m.getItemCameraTransforms().firstPerson;
+                      if (t == null || t == ItemTransformVec3f.DEFAULT) return;
+                      float[] b = base.get(t);
+                      if (b == null) {
+                          b = new float[]{
+                                  t.translation.x, t.translation.y, t.translation.z,
+                                  t.rotation.x, t.rotation.y, t.rotation.z,
+                                  t.scale.x, t.scale.y, t.scale.z};
+                          base.put(t, b);
+                      }
+                      set(t, b, ModConfig.itemX, ModConfig.itemY, ModConfig.itemZ,
+                              ModConfig.itemRotX, ModConfig.itemRotY, ModConfig.itemRotZ, ModConfig.itemScale / 100f);
+                      dirty = true;
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              private void set(ItemTransformVec3f t, float[] b, int dx, int dy, int dz, int rx, int ry, int rz, float sc) {
+                  t.translation.x = b[0] + dx * 0.02f;
+                  t.translation.y = b[1] + dy * 0.02f;
+                  t.translation.z = b[2] + dz * 0.02f;
+                  t.rotation.x = b[3] + rx;
+                  t.rotation.y = b[4] + ry;
+                  t.rotation.z = b[5] + rz;
+                  t.scale.x = b[6] * sc;
+                  t.scale.y = b[7] * sc;
+                  t.scale.z = b[8] * sc;
+              }
+
+              private void restore() {
+                  for (Map.Entry<ItemTransformVec3f, float[]> en : base.entrySet()) {
+                      set(en.getKey(), en.getValue(), 0, 0, 0, 0, 0, 0, 1f);
+                  }
+                  dirty = false;
+              }
+          }
+          LEGITEOF
+          cat > proj/src/main/java/com/legitclient/Extras.java <<'LEGITEOF'
+          package com.legitclient;
+
+          import net.minecraft.block.Block;
+          import net.minecraft.block.material.Material;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.entity.EntityPlayerSP;
+          import net.minecraft.client.gui.FontRenderer;
+          import net.minecraft.client.gui.Gui;
+          import net.minecraft.client.gui.ScaledResolution;
+          import net.minecraft.client.multiplayer.ServerData;
+          import net.minecraft.client.multiplayer.WorldClient;
+          import net.minecraft.client.network.NetworkPlayerInfo;
+          import net.minecraft.client.renderer.GlStateManager;
+          import net.minecraft.client.renderer.RenderGlobal;
+          import net.minecraft.client.settings.KeyBinding;
+          import net.minecraft.entity.player.EntityPlayer;
+          import net.minecraft.init.Items;
+          import net.minecraft.item.Item;
+          import net.minecraft.item.ItemPotion;
+          import net.minecraft.item.ItemStack;
+          import net.minecraft.potion.Potion;
+          import net.minecraft.potion.PotionEffect;
+          import net.minecraft.util.AxisAlignedBB;
+          import net.minecraft.util.BlockPos;
+          import net.minecraft.util.ChatComponentText;
+          import net.minecraft.util.EnumParticleTypes;
+          import net.minecraft.util.MathHelper;
+          import net.minecraft.util.MovingObjectPosition;
+          import net.minecraftforge.client.event.ClientChatReceivedEvent;
+          import net.minecraftforge.client.event.DrawBlockHighlightEvent;
+          import net.minecraftforge.client.event.FOVUpdateEvent;
+          import net.minecraftforge.client.event.RenderBlockOverlayEvent;
+          import net.minecraftforge.client.event.RenderGameOverlayEvent;
+          import net.minecraftforge.client.event.RenderHandEvent;
+          import net.minecraftforge.event.entity.player.AttackEntityEvent;
+          import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+          import net.minecraftforge.fml.common.gameevent.InputEvent;
+          import net.minecraftforge.fml.common.gameevent.TickEvent;
+          import org.lwjgl.input.Keyboard;
+          import org.lwjgl.input.Mouse;
+          import org.lwjgl.opengl.GL11;
+
+          import java.text.SimpleDateFormat;
+          import java.util.ArrayList;
+          import java.util.Date;
+          import java.util.List;
+          import java.util.Locale;
+
+          /** Módulos extras do client. Todos são visuais/informativos e permitidos (sem hacks). */
+          public class Extras {
+              private static final long[] TIMES = {0L, 6000L, 12500L, 18000L};
+              private static final String[] CARDINALS = {"N", "L", "S", "O"};
+              private static final int HIST = 60;
+
+              private final Minecraft mc = Minecraft.getMinecraft();
+              private final List<String> lines = new ArrayList<String>();
+              private final SimpleDateFormat clock = new SimpleDateFormat("HH:mm:ss");
+              private final SimpleDateFormat chatClock = new SimpleDateFormat("HH:mm");
+
+              private double bps, distance;
+              private int combo, maxCombo, totalHits, prevHurt, tickCount;
+              private long lastHit;
+              private double reach = -1;
+              private String counters = "";
+              private boolean sneakToggled, sneakForced;
+
+              private final long sessionStart = System.currentTimeMillis();
+              private long lastBreak = System.currentTimeMillis();
+              private boolean deathAnnounced;
+              private final boolean[] warned = new boolean[5];
+
+              private final int[] fpsHist = new int[HIST];
+              private int fpsIdx, fpsCount;
+              private double frameMs = 16;
+              private long lastFrameNs;
+
+              private String lastChat = "";
+              private long lastChatTime;
+
+              public List<String> getLines() {
+                  return lines;
+              }
+
+              // =====================================================================
+              // Tick: monta as linhas do HUD e aplica ajustes
+              // =====================================================================
+              @SubscribeEvent
+              public void onTick(TickEvent.ClientTickEvent e) {
+                  if (e.phase != TickEvent.Phase.END) return;
+                  lines.clear();
+                  EntityPlayerSP p = mc.thePlayer;
+                  WorldClient w = mc.theWorld;
+                  if (p == null || w == null) return;
+                  try {
+                      tickCount++;
+
+                      double dx = p.posX - p.prevPosX, dz = p.posZ - p.prevPosZ;
+                      double step = Math.sqrt(dx * dx + dz * dz);
+                      bps += (step * 20.0 - bps) * 0.2;
+                      if (step < 10.0) distance += step;
+
+                      if (p.hurtTime > prevHurt) combo = 0;
+                      prevHurt = p.hurtTime;
+                      if (combo > 0 && System.currentTimeMillis() - lastHit > 3000) combo = 0;
+
+                      if (tickCount % 5 == 0) {
+                          counters = countItems(p);
+                          fpsHist[fpsIdx] = Minecraft.getDebugFPS();
+                          fpsIdx = (fpsIdx + 1) % HIST;
+                          if (fpsCount < HIST) fpsCount++;
+                      }
+                      if (tickCount % 20 == 0 && ModConfig.flag("durabaixa")) checkDurability(p);
+
+                      buildLines(p, w);
+                      worldTweaks(w);
+                      handleSneak();
+                      handleAlerts(p);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              private void buildLines(EntityPlayerSP p, WorldClient w) {
+                  MovingObjectPosition mop = mc.objectMouseOver;
+
+                  if (ModConfig.flag("ping")) {
+                      int ping = 0;
+                      try {
+                          NetworkPlayerInfo info = mc.getNetHandler().getPlayerInfo(p.getUniqueID());
+                          if (info != null) ping = info.getResponseTime();
+                      } catch (Throwable ignored) {
+                      }
+                      lines.add("Ping: " + ping + " ms");
+                  }
+                  if (ModConfig.flag("relogio")) lines.add(clock.format(new Date()));
+                  if (ModConfig.flag("sessao")) {
+                      long sec = (System.currentTimeMillis() - sessionStart) / 1000L;
+                      lines.add(String.format(Locale.US, "Sessão: %02d:%02d:%02d", sec / 3600L, (sec / 60L) % 60L, sec % 60L));
+                  }
+                  if (ModConfig.flag("dia")) {
+                      long t = w.getWorldTime();
+                      int tod = (int) (t % 24000L);
+                      lines.add(String.format(Locale.US, "Dia %d  %02d:%02d", t / 24000L + 1L,
+                              (tod / 1000 + 6) % 24, (tod % 1000) * 60 / 1000));
+                  }
+                  if (ModConfig.flag("velocidade")) lines.add(String.format(Locale.US, "Velocidade: %.1f b/s", bps));
+                  if (ModConfig.flag("distancia")) lines.add(String.format(Locale.US, "Distância: %.0f blocos", distance));
+                  if (ModConfig.flag("bioma")) lines.add("Bioma: " + w.getBiomeGenForCoords(new BlockPos(p)).biomeName);
+                  if (ModConfig.flag("dimensao")) lines.add("Dimensão: " + w.provider.getDimensionName());
+                  if (ModConfig.flag("nether")) {
+                      lines.add(String.format(Locale.US, "Nether: %.1f / %.1f", p.posX / 8.0, p.posZ / 8.0));
+                  }
+                  if (ModConfig.flag("chunk")) {
+                      lines.add("Chunk: " + (((int) Math.floor(p.posX)) >> 4) + ", " + (((int) Math.floor(p.posZ)) >> 4));
+                  }
+                  if (ModConfig.flag("luz")) lines.add("Luz: " + w.getLightFromNeighbors(new BlockPos(p)));
+                  if (ModConfig.flag("angulos")) {
+                      lines.add(String.format(Locale.US, "Yaw %.1f / Pitch %.1f",
+                              MathHelper.wrapAngleTo180_float(p.rotationYaw), p.rotationPitch));
+                  }
+                  if (ModConfig.flag("servidor")) {
+                      ServerData sd = mc.getCurrentServerData();
+                      lines.add("Servidor: " + (sd == null ? "Singleplayer" : sd.serverIP));
+                  }
+                  if (ModConfig.flag("online")) lines.add("Online: " + mc.getNetHandler().getPlayerInfoMap().size());
+
+                  if (ModConfig.flag("blocoalvo") && mop != null
+                          && mop.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
+                      Block b = w.getBlockState(mop.getBlockPos()).getBlock();
+                      lines.add("Bloco: " + b.getLocalizedName());
+                  }
+                  if (ModConfig.flag("entalvo") && mop != null
+                          && mop.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY && mop.entityHit != null) {
+                      lines.add("Alvo: " + mop.entityHit.getName());
+                  }
+
+                  if (ModConfig.flag("vida")) {
+                      String v = String.format(Locale.US, "Vida: %.1f / %.0f", p.getHealth(), p.getMaxHealth());
+                      if (p.getAbsorptionAmount() > 0f) v += String.format(Locale.US, " (+%.1f)", p.getAbsorptionAmount());
+                      lines.add(v);
+                  }
+                  if (ModConfig.flag("fome")) {
+                      lines.add(String.format(Locale.US, "Fome: %d  Saturação: %.1f",
+                              p.getFoodStats().getFoodLevel(), p.getFoodStats().getSaturationLevel()));
+                  }
+                  if (ModConfig.flag("xp")) lines.add("XP: nível " + p.experienceLevel);
+                  ItemStack held = p.getHeldItem();
+                  if (ModConfig.flag("itemmao") && held != null) {
+                      String n = held.getDisplayName();
+                      if (held.isItemStackDamageable()) n += " " + (held.getMaxDamage() - held.getItemDamage()) + "/" + held.getMaxDamage();
+                      lines.add(n);
+                  }
+                  if (ModConfig.flag("blocosqtd") && held != null) {
+                      int c = 0;
+                      for (ItemStack s : p.inventory.mainInventory) {
+                          if (s != null && s.isItemEqual(held)) c += s.stackSize;
+                      }
+                      lines.add("Quantidade: " + c);
+                  }
+                  if (ModConfig.flag("contadores") && !counters.isEmpty()) lines.add(counters);
+
+                  if (ModConfig.flag("combo")) lines.add("Combo: " + combo);
+                  if (ModConfig.flag("alcance")) {
+                      lines.add(reach < 0 ? "Alcance: -" : String.format(Locale.US, "Alcance: %.2f", reach));
+                  }
+                  if (ModConfig.flag("hitstotal")) lines.add("Hits: " + totalHits + "  Combo máx: " + maxCombo);
+
+                  if (ModConfig.flag("memoria")) {
+                      Runtime rt = Runtime.getRuntime();
+                      long used = (rt.totalMemory() - rt.freeMemory()) >> 20;
+                      lines.add("RAM: " + used + "/" + (rt.maxMemory() >> 20) + " MB");
+                  }
+                  if (ModConfig.flag("frametime")) lines.add(String.format(Locale.US, "Frametime: %.1f ms", frameMs));
+                  if (ModConfig.flag("fpsstats") && fpsCount > 0) {
+                      int min = Integer.MAX_VALUE, max = 0;
+                      long sum = 0;
+                      for (int i = 0; i < fpsCount; i++) {
+                          int f = fpsHist[i];
+                          min = Math.min(min, f);
+                          max = Math.max(max, f);
+                          sum += f;
+                      }
+                      lines.add("FPS mín " + min + " / méd " + (sum / fpsCount) + " / máx " + max);
+                  }
+              }
+
+              private void worldTweaks(WorldClient w) {
+                  if (ModConfig.fixedTime > 0 && ModConfig.fixedTime < TIMES.length) {
+                      w.setWorldTime(TIMES[ModConfig.fixedTime]);
+                  }
+                  if (ModConfig.flag("semchuva")) {
+                      w.setRainStrength(0f);
+                      w.setThunderStrength(0f);
+                      w.prevRainingStrength = 0f;
+                      w.prevThunderingStrength = 0f;
+                  }
+              }
+
+              private void handleAlerts(EntityPlayerSP p) {
+                  // coordenadas da morte
+                  if (p.getHealth() <= 0f || p.deathTime > 0) {
+                      if (!deathAnnounced) {
+                          deathAnnounced = true;
+                          if (ModConfig.flag("morte")) {
+                              p.addChatMessage(new ChatComponentText(String.format(Locale.US,
+                                      "\u00a7c[Legit Client] \u00a7fVocê morreu em \u00a7e%d %d %d",
+                                      (int) p.posX, (int) p.posY, (int) p.posZ)));
+                          }
+                      }
+                  } else {
+                      deathAnnounced = false;
+                  }
+
+                  // lembrete de pausa
+                  if (ModConfig.flag("pausa") && System.currentTimeMillis() - lastBreak > 30L * 60L * 1000L) {
+                      lastBreak = System.currentTimeMillis();
+                      p.addChatMessage(new ChatComponentText(
+                              "\u00a7e[Legit Client] \u00a7fJá faz 30 minutos de jogo. Que tal uma pausa?"));
+                  }
+              }
+
+              private void checkDurability(EntityPlayerSP p) {
+                  for (int i = 0; i < 5; i++) {
+                      ItemStack s = i < 4 ? p.inventory.armorInventory[i] : p.getHeldItem();
+                      boolean low = false;
+                      int pct = 100;
+                      if (s != null && s.isItemStackDamageable() && s.getMaxDamage() > 0) {
+                          pct = (s.getMaxDamage() - s.getItemDamage()) * 100 / s.getMaxDamage();
+                          low = pct < 10;
+                      }
+                      if (low && !warned[i]) {
+                          warned[i] = true;
+                          p.addChatMessage(new ChatComponentText("\u00a7e[Legit Client] \u00a7fDurabilidade baixa: \u00a7c"
+                                  + s.getDisplayName() + " (" + pct + "%)"));
+                      } else if (!low) {
+                          warned[i] = false;
+                      }
+                  }
+              }
+
+              private String countItems(EntityPlayerSP p) {
+                  int pots = 0, pearls = 0, gaps = 0, arrows = 0, soups = 0;
+                  for (ItemStack s : p.inventory.mainInventory) {
+                      if (s == null) continue;
+                      Item it = s.getItem();
+                      if (it == Items.ender_pearl) pearls += s.stackSize;
+                      else if (it == Items.golden_apple) gaps += s.stackSize;
+                      else if (it == Items.arrow) arrows += s.stackSize;
+                      else if (it == Items.mushroom_stew) soups += s.stackSize;
+                      else if (it instanceof ItemPotion && ItemPotion.isSplash(s.getMetadata())) {
+                          List<PotionEffect> eff = ((ItemPotion) it).getEffects(s);
+                          if (eff != null) {
+                              for (PotionEffect pe : eff) {
+                                  if (pe.getPotionID() == Potion.heal.id) {
+                                      pots += s.stackSize;
+                                      break;
+                                  }
+                              }
+                          }
+                      }
+                  }
+                  StringBuilder sb = new StringBuilder();
+                  if (pots > 0) sb.append("Pots ").append(pots).append("  ");
+                  if (soups > 0) sb.append("Sopas ").append(soups).append("  ");
+                  if (pearls > 0) sb.append("Pérolas ").append(pearls).append("  ");
+                  if (gaps > 0) sb.append("Maçãs ").append(gaps).append("  ");
+                  if (arrows > 0) sb.append("Flechas ").append(arrows);
+                  return sb.toString().trim();
+              }
+
+              // =====================================================================
+              // Combate: combo, alcance, hits, partículas e som (cosméticos)
+              // =====================================================================
+              @SubscribeEvent
+              public void onAttack(AttackEntityEvent e) {
+                  if (e.entityPlayer != mc.thePlayer) return;
+                  combo++;
+                  totalHits++;
+                  if (combo > maxCombo) maxCombo = combo;
+                  lastHit = System.currentTimeMillis();
+
+                  MovingObjectPosition mop = mc.objectMouseOver;
+                  if (mop != null && mop.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY && mop.hitVec != null) {
+                      reach = mc.thePlayer.getPositionEyes(1.0F).distanceTo(mop.hitVec);
+                  }
+
+                  try {
+                      if (e.target != null) {
+                          for (int i = 0; i < ModConfig.partCount; i++) {
+                              if (ModConfig.flag("critparts")) mc.effectRenderer.emitParticleAtEntity(e.target, EnumParticleTypes.CRIT);
+                              if (ModConfig.flag("magparts")) mc.effectRenderer.emitParticleAtEntity(e.target, EnumParticleTypes.CRIT_MAGIC);
+                          }
+                      }
+                      if (ModConfig.flag("somhit")) mc.thePlayer.playSound("random.successful_hit", 0.5F, 1.2F);
+                  } catch (Throwable ignored) {
+                  }
+              }
+
+              // =====================================================================
+              // Agachar alternado
+              // =====================================================================
+              private boolean rawDown(KeyBinding k) {
+                  int c = k.getKeyCode();
+                  if (c > 0) return Keyboard.isKeyDown(c);
+                  if (c < 0) return Mouse.isButtonDown(c + 100);
+                  return false;
+              }
+
+              private void handleSneak() {
+                  KeyBinding k = mc.gameSettings.keyBindSneak;
+                  if (!ModConfig.flag("sneaktoggle")) {
+                      if (sneakForced) {
+                          KeyBinding.setKeyBindState(k.getKeyCode(), rawDown(k));
+                          sneakForced = false;
+                          sneakToggled = false;
+                      }
+                      return;
+                  }
+                  if (mc.currentScreen != null) return;
+                  if (k.isPressed()) sneakToggled = !sneakToggled;
+                  KeyBinding.setKeyBindState(k.getKeyCode(), sneakToggled || rawDown(k));
+                  sneakForced = true;
+              }
+
+              @SubscribeEvent
+              public void onKey(InputEvent.KeyInputEvent e) {
+                  if (ModConfig.flag("sneaktoggle")) handleSneak();
+              }
+
+              @SubscribeEvent
+              public void onMouse(InputEvent.MouseInputEvent e) {
+                  if (ModConfig.flag("sneaktoggle")) handleSneak();
+              }
+
+              // =====================================================================
+              // Chat: horário, menção, anti-repetição
+              // =====================================================================
+              @SubscribeEvent
+              public void onChat(ClientChatReceivedEvent e) {
+                  if (e.message == null || e.type == 2) return;
+                  String txt = e.message.getUnformattedText();
+
+                  if (ModConfig.flag("chatdup")) {
+                      long now = System.currentTimeMillis();
+                      if (txt.equals(lastChat) && now - lastChatTime < 5000L) {
+                          lastChatTime = now;
+                          e.setCanceled(true);
+                          return;
+                      }
+                      lastChat = txt;
+                      lastChatTime = now;
+                  }
+
+                  if (ModConfig.flag("mencao") && mc.thePlayer != null) {
+                      String n = mc.thePlayer.getName().toLowerCase();
+                      String low = txt.toLowerCase();
+                      if (low.contains(n) && !low.contains(n + ":") && !low.startsWith("<" + n + ">")) {
+                          mc.thePlayer.playSound("note.pling", 1.0F, 1.5F);
+                      }
+                  }
+
+                  if (ModConfig.flag("chathora")) {
+                      ChatComponentText prefix = new ChatComponentText("\u00a77[" + chatClock.format(new Date()) + "] \u00a7r");
+                      prefix.appendSibling(e.message);
+                      e.message = prefix;
+                  }
+              }
+
+              // =====================================================================
+              // Visual: FOV fixo, esconder mão, overlays
+              // =====================================================================
+              @SubscribeEvent
+              public void onFov(FOVUpdateEvent e) {
+                  if (ModConfig.flag("fovfixo")) e.newfov = 1.0F;
+              }
+
+              @SubscribeEvent
+              public void onHand(RenderHandEvent e) {
+                  if (ModConfig.flag("semmao")) e.setCanceled(true);
+              }
+
+              @SubscribeEvent
+              public void onBlockOverlay(RenderBlockOverlayEvent e) {
+                  if (ModConfig.flag("semfogo") && e.overlayType == RenderBlockOverlayEvent.OverlayType.FIRE) {
+                      e.setCanceled(true);
+                  }
+              }
+
+              @SubscribeEvent
+              public void onOverlayPre(RenderGameOverlayEvent.Pre e) {
+                  if (e.type == RenderGameOverlayEvent.ElementType.PORTAL && ModConfig.flag("semportal")) {
+                      e.setCanceled(true);
+                      return;
+                  }
+                  if (e.type == RenderGameOverlayEvent.ElementType.HELMET && ModConfig.flag("semabobora")) {
+                      e.setCanceled(true);
+                      return;
+                  }
+                  if (e.type != RenderGameOverlayEvent.ElementType.CROSSHAIRS || !ModConfig.flag("mira")) return;
+                  e.setCanceled(true);
+                  if (mc.gameSettings.thirdPersonView != 0) return;
+
+                  ScaledResolution sr = e.resolution;
+                  int cx = sr.getScaledWidth() / 2;
+                  int cy = sr.getScaledHeight() / 2;
+                  int c = 0xFF000000 | ModConfig.rgb(ModConfig.crossColor);
+                  int s = ModConfig.crossSize;
+                  int g = 2;
+                  int shadow = 0x90000000;
+
+                  if (ModConfig.crossStyle == 0 || ModConfig.crossStyle == 2) {
+                      Gui.drawRect(cx - g - s - 1, cy - 1, cx - g + 1, cy + 2, shadow);
+                      Gui.drawRect(cx + g, cy - 1, cx + g + s + 2, cy + 2, shadow);
+                      Gui.drawRect(cx - 1, cy - g - s - 1, cx + 2, cy - g + 1, shadow);
+                      Gui.drawRect(cx - 1, cy + g, cx + 2, cy + g + s + 2, shadow);
+                      Gui.drawRect(cx - g - s, cy, cx - g, cy + 1, c);
+                      Gui.drawRect(cx + 1 + g, cy, cx + 1 + g + s, cy + 1, c);
+                      Gui.drawRect(cx, cy - g - s, cx + 1, cy - g, c);
+                      Gui.drawRect(cx, cy + 1 + g, cx + 1, cy + 1 + g + s, c);
+                  }
+                  if (ModConfig.crossStyle == 1 || ModConfig.crossStyle == 2) {
+                      Gui.drawRect(cx - 1, cy - 1, cx + 2, cy + 2, shadow);
+                      Gui.drawRect(cx, cy, cx + 1, cy + 1, c);
+                  }
+              }
+
+              // =====================================================================
+              // HUD extra: aviso de vida baixa, bússola e gráfico de FPS
+              // =====================================================================
+              @SubscribeEvent
+              public void onRender(RenderGameOverlayEvent.Post e) {
+                  if (e.type != RenderGameOverlayEvent.ElementType.ALL) return;
+
+                  long now = System.nanoTime();
+                  if (lastFrameNs != 0L) frameMs += ((now - lastFrameNs) / 1000000.0 - frameMs) * 0.1;
+                  lastFrameNs = now;
+
+                  EntityPlayerSP p = mc.thePlayer;
+                  if (p == null || mc.gameSettings.showDebugInfo) return;
+                  ScaledResolution sr = e.resolution;
+                  FontRenderer fr = mc.fontRendererObj;
+
+                  if (ModConfig.flag("vidabaixa")) drawLowHealth(sr, p);
+                  if (ModConfig.flag("bussola")) drawCompass(sr, p, fr);
+                  if (ModConfig.flag("fpsgraph")) drawGraph(sr, fr);
+              }
+
+              private void drawLowHealth(ScaledResolution sr, EntityPlayerSP p) {
+                  float hp = p.getHealth();
+                  if (hp <= 0f || hp > 6f) return;
+                  int w = sr.getScaledWidth(), h = sr.getScaledHeight();
+                  double pulse = 0.65 + 0.35 * Math.sin(System.currentTimeMillis() / 180.0);
+                  for (int i = 0; i < 6; i++) {
+                      int a = (int) (0x70 * pulse * (1.0 - i / 6.0));
+                      int col = (a << 24) | 0xFF0000;
+                      int o = i * 3;
+                      Gui.drawRect(0, o, w, o + 3, col);
+                      Gui.drawRect(0, h - o - 3, w, h - o, col);
+                      Gui.drawRect(o, o + 3, o + 3, h - o - 3, col);
+                      Gui.drawRect(w - o - 3, o + 3, w - o, h - o - 3, col);
+                  }
+              }
+
+              private void drawCompass(ScaledResolution sr, EntityPlayerSP p, FontRenderer fr) {
+                  int cx = sr.getScaledWidth() / 2;
+                  float bearing = (MathHelper.wrapAngleTo180_float(p.rotationYaw) + 180f + 360f) % 360f;
+                  Gui.drawRect(cx - 100, 2, cx + 100, 15, 0x55000000);
+                  for (int d = 0; d < 360; d += 15) {
+                      float delta = MathHelper.wrapAngleTo180_float(d - bearing);
+                      if (Math.abs(delta) > 75f) continue;
+                      int x = cx + (int) (delta * 1.3f);
+                      if (d % 90 == 0) {
+                          String lab = CARDINALS[d / 90];
+                          fr.drawStringWithShadow(lab, x - fr.getStringWidth(lab) / 2, 5, d == 0 ? 0xFF5555 : 0xFFFFFF);
+                      } else {
+                          Gui.drawRect(x, 6, x + 1, 11, 0xAAFFFFFF);
+                      }
+                  }
+                  Gui.drawRect(cx, 15, cx + 1, 19, 0xFF2D6FF7);
+                  String deg = String.valueOf((int) bearing) + "\u00b0";
+                  fr.drawStringWithShadow(deg, cx - fr.getStringWidth(deg) / 2, 20, 0xFFFFFF);
+              }
+
+              private void drawGraph(ScaledResolution sr, FontRenderer fr) {
+                  int x = sr.getScaledWidth() - HIST - 6;
+                  int y = sr.getScaledHeight() - 44;
+                  int h = 30;
+                  Gui.drawRect(x - 2, y - 11, x + HIST + 2, y + h + 2, 0x66000000);
+                  fr.drawString("FPS", x, y - 9, 0xFFFFFF);
+                  for (int i = 0; i < fpsCount; i++) {
+                      int idx = (fpsIdx - fpsCount + i + HIST * 2) % HIST;
+                      int f = fpsHist[idx];
+                      int bh = (int) (Math.min(1.0f, f / 120.0f) * h);
+                      if (bh < 1) bh = 1;
+                      int col = f >= 60 ? 0xFF55FF55 : (f >= 30 ? 0xFFFFFF55 : 0xFFFF5555);
+                      int bx = x + (HIST - fpsCount) + i;
+                      Gui.drawRect(bx, y + h - bh, bx + 1, y + h, col);
+                  }
+              }
+
+              // =====================================================================
+              // Contorno de bloco colorido
+              // =====================================================================
+              @SubscribeEvent
+              public void onBlockHighlight(DrawBlockHighlightEvent e) {
+                  if (!ModConfig.flag("contorno")) return;
+                  MovingObjectPosition t = e.target;
+                  if (t == null || t.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK || mc.theWorld == null) return;
+                  try {
+                      BlockPos pos = t.getBlockPos();
+                      Block b = mc.theWorld.getBlockState(pos).getBlock();
+                      if (b.getMaterial() == Material.air) return;
+                      b.setBlockBoundsBasedOnState(mc.theWorld, pos);
+
+                      EntityPlayer pl = e.player;
+                      double ox = pl.lastTickPosX + (pl.posX - pl.lastTickPosX) * e.partialTicks;
+                      double oy = pl.lastTickPosY + (pl.posY - pl.lastTickPosY) * e.partialTicks;
+                      double oz = pl.lastTickPosZ + (pl.posZ - pl.lastTickPosZ) * e.partialTicks;
+                      AxisAlignedBB bb = b.getSelectedBoundingBox(mc.theWorld, pos)
+                              .expand(0.002D, 0.002D, 0.002D).offset(-ox, -oy, -oz);
+
+                      int rgb = ModConfig.rgb(ModConfig.outlineColor);
+                      GlStateManager.enableBlend();
+                      GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+                      GlStateManager.color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 0.9f);
+                      GL11.glLineWidth(2.0F);
+                      GlStateManager.disableTexture2D();
+                      GlStateManager.depthMask(false);
+                      RenderGlobal.drawSelectionBoundingBox(bb);
+                      GlStateManager.depthMask(true);
+                      GlStateManager.enableTexture2D();
+                      GlStateManager.disableBlend();
+                      GlStateManager.color(1f, 1f, 1f, 1f);
+                      e.setCanceled(true);
+                  } catch (Throwable ignored) {
+                  }
+              }
+          }
+          LEGITEOF
+          cat > proj/src/main/java/com/legitclient/LegitClient.java <<'LEGITEOF'
+          package com.legitclient;
+
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.gui.FontRenderer;
+          import net.minecraft.client.gui.Gui;
+          import net.minecraft.client.gui.ScaledResolution;
+          import net.minecraft.client.renderer.GlStateManager;
+          import net.minecraft.client.renderer.RenderHelper;
+          import net.minecraft.client.resources.I18n;
+          import net.minecraft.client.settings.KeyBinding;
+          import net.minecraft.command.CommandBase;
+          import net.minecraft.command.ICommandSender;
+          import net.minecraft.util.ChatComponentText;
+          import net.minecraft.item.ItemStack;
+          import net.minecraft.potion.Potion;
+          import net.minecraft.potion.PotionEffect;
+          import net.minecraftforge.client.ClientCommandHandler;
+          import net.minecraftforge.client.event.RenderGameOverlayEvent;
+          import net.minecraftforge.common.MinecraftForge;
+          import net.minecraftforge.fml.client.registry.ClientRegistry;
+          import net.minecraftforge.fml.common.Mod;
+          import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+          import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+          import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+          import net.minecraftforge.fml.common.gameevent.TickEvent;
+          import org.lwjgl.input.Keyboard;
+          import org.lwjgl.input.Mouse;
+
+          import java.util.ArrayList;
+          import java.util.LinkedList;
+          import java.util.List;
+
+          @Mod(modid = LegitClient.MODID, name = "Legit Client", version = "1.0.0",
+                  acceptedMinecraftVersions = "[1.8.9]", clientSideOnly = true)
+          public class LegitClient {
+              public static final String MODID = "legitclient";
+
+              public static final KeyBinding KEY_MENU = new KeyBinding("Abrir menu", Keyboard.KEY_RSHIFT, "Legit Client");
+              public static final KeyBinding KEY_ZOOM = new KeyBinding("Zoom", Keyboard.KEY_C, "Legit Client");
+
+              private final Minecraft mc = Minecraft.getMinecraft();
+              private final Extras extras = new Extras();
+
+              private volatile boolean openMenu;
+
+              private final LinkedList<Long> leftClicks = new LinkedList<Long>();
+              private final LinkedList<Long> rightClicks = new LinkedList<Long>();
+              private boolean lastLeft, lastRight;
+
+              private boolean zooming;
+              private float savedFov;
+              private boolean savedSmooth;
+
+              private boolean forcedSprint;
+
+              @Mod.EventHandler
+              public void preInit(FMLPreInitializationEvent e) {
+                  ModConfig.load(e.getSuggestedConfigurationFile());
+              }
+
+              @Mod.EventHandler
+              public void init(FMLInitializationEvent e) {
+                  ClientRegistry.registerKeyBinding(KEY_MENU);
+                  ClientRegistry.registerKeyBinding(KEY_ZOOM);
+                  MinecraftForge.EVENT_BUS.register(this);
+                  MinecraftForge.EVENT_BUS.register(new Animations());
+                  MinecraftForge.EVENT_BUS.register(extras);
+
+                  // /lc abre o menu (útil no celular, sem Right Shift)
+                  ClientCommandHandler.instance.registerCommand(new CommandBase() {
+                      @Override
+                      public String getCommandName() {
+                          return "lc";
+                      }
+
+                      @Override
+                      public String getCommandUsage(ICommandSender sender) {
+                          return "/lc [modulo|lista]";
+                      }
+
+                      @Override
+                      public void processCommand(ICommandSender sender, String[] args) {
+                          if (args.length == 0) {
+                              openMenu = true;
+                              return;
+                          }
+                          String key = args[0].toLowerCase();
+                          if (key.equals("lista")) {
+                              StringBuilder sb = new StringBuilder("\u00a7e[Legit Client] \u00a7fMódulos: ");
+                              for (String[] m : ModConfig.EXTRA_MODS) {
+                                  if (!m[0].startsWith("#")) sb.append(m[0]).append(' ');
+                              }
+                              sender.addChatMessage(new ChatComponentText(sb.toString()));
+                              return;
+                          }
+                          for (String[] m : ModConfig.EXTRA_MODS) {
+                              if (m[0].equals(key)) {
+                                  ModConfig.toggleFlag(key);
+                                  ModConfig.save();
+                                  sender.addChatMessage(new ChatComponentText("\u00a7e[Legit Client] \u00a7f" + m[1] + ": "
+                                          + (ModConfig.flag(key) ? "\u00a7aligado" : "\u00a7cdesligado")));
+                                  return;
+                              }
+                          }
+                          sender.addChatMessage(new ChatComponentText("\u00a7e[Legit Client] \u00a7fMódulo não encontrado. Use /lc lista"));
+                      }
+
+                      @Override
+                      public int getRequiredPermissionLevel() {
+                          return 0;
+                      }
+
+                      @Override
+                      public boolean canCommandSenderUseCommand(ICommandSender sender) {
+                          return true;
+                      }
+                  });
+
+                  if (ModConfig.fpsBoostOnStart) FpsBoost.apply();
+              }
+
+              @SubscribeEvent
+              public void onTick(TickEvent.ClientTickEvent e) {
+                  if (e.phase != TickEvent.Phase.END) return;
+
+                  // CPS (só conta com o jogo em foco, sem tela aberta)
+                  long now = System.currentTimeMillis();
+                  boolean l = Mouse.isButtonDown(0);
+                  boolean r = Mouse.isButtonDown(1);
+                  if (mc.currentScreen == null) {
+                      if (l && !lastLeft) leftClicks.add(now);
+                      if (r && !lastRight) rightClicks.add(now);
+                  }
+                  lastLeft = l;
+                  lastRight = r;
+                  while (!leftClicks.isEmpty() && now - leftClicks.getFirst() > 1000) leftClicks.removeFirst();
+                  while (!rightClicks.isEmpty() && now - rightClicks.getFirst() > 1000) rightClicks.removeFirst();
+
+                  // Menu
+                  if (KEY_MENU.isPressed()) openMenu = true;
+                  if (openMenu && (mc.currentScreen == null || !(mc.currentScreen instanceof MenuScreen))) {
+                      openMenu = false;
+                      mc.displayGuiScreen(new MenuScreen());
+                  }
+
+                  if (mc.thePlayer == null) return;
+
+                  // Toggle sprint: equivale a segurar a tecla de sprint enquanto anda pra frente
+                  int sprintCode = mc.gameSettings.keyBindSprint.getKeyCode();
+                  if (ModConfig.toggleSprint && mc.currentScreen == null
+                          && mc.gameSettings.keyBindForward.isKeyDown() && !mc.thePlayer.isSneaking()) {
+                      KeyBinding.setKeyBindState(sprintCode, true);
+                      forcedSprint = true;
+                  } else if (forcedSprint) {
+                      KeyBinding.setKeyBindState(sprintCode, false);
+                      forcedSprint = false;
+                  }
+
+                  // Zoom (FOV menor + câmera suave, igual ao zoom de OptiFine)
+                  boolean wantZoom = ModConfig.zoom && mc.currentScreen == null && KEY_ZOOM.isKeyDown();
+                  if (wantZoom && !zooming) {
+                      savedFov = mc.gameSettings.fovSetting;
+                      savedSmooth = mc.gameSettings.smoothCamera;
+                      mc.gameSettings.fovSetting = Math.max(5f, savedFov / ModConfig.zoomLevel);
+                      mc.gameSettings.smoothCamera = !ModConfig.flag("zoomduro");
+                      zooming = true;
+                  } else if (!wantZoom && zooming) {
+                      mc.gameSettings.fovSetting = savedFov;
+                      mc.gameSettings.smoothCamera = savedSmooth;
+                      zooming = false;
+                  }
+              }
+
+              @SubscribeEvent
+              public void onRender(RenderGameOverlayEvent.Post e) {
+                  if (e.type != RenderGameOverlayEvent.ElementType.ALL) return;
+                  if (mc.thePlayer == null || mc.gameSettings.showDebugInfo) return;
+
+                  FontRenderer fr = mc.fontRendererObj;
+                  ScaledResolution sr = e.resolution;
+                  int col = ModConfig.hudRgb();
+                  boolean shadow = !ModConfig.flag("semsombra");
+
+                  List<String> left = new ArrayList<String>();
+                  if (ModConfig.fps) left.add("FPS: " + Minecraft.getDebugFPS());
+                  if (ModConfig.cps) left.add("CPS: " + leftClicks.size() + " | " + rightClicks.size());
+                  if (ModConfig.coords) {
+                      left.add(String.format("XYZ: %.1f / %.1f / %.1f",
+                              mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ));
+                      left.add("Direção: " + mc.thePlayer.getHorizontalFacing().getName());
+                  }
+                  left.addAll(extras.getLines());
+
+                  float sc = ModConfig.hudScale / 100f;
+                  GlStateManager.pushMatrix();
+                  GlStateManager.translate((float) ModConfig.hudX, (float) ModConfig.hudY, 0f);
+                  GlStateManager.scale(sc, sc, 1f);
+
+                  if (ModConfig.flag("hudfundo") && !left.isEmpty()) {
+                      int wmax = 0;
+                      for (String l : left) wmax = Math.max(wmax, fr.getStringWidth(l));
+                      Gui.drawRect(2, 2, wmax + 6, 4 + left.size() * 10, 0x60000000);
+                  }
+                  int y = 4;
+                  for (String l : left) {
+                      fr.drawString(l, 4, y, col, shadow);
+                      y += 10;
+                  }
+
+                  if (ModConfig.keystrokes) drawKeystrokes(4, y + 6);
+                  GlStateManager.popMatrix();
+
+                  if (ModConfig.armor) drawArmor(sr);
+                  if (ModConfig.potions) drawPotions(sr);
+              }
+
+              private void box(int x, int y, int w, int h, String label, boolean down) {
+                  FontRenderer fr = mc.fontRendererObj;
+                  Gui.drawRect(x, y, x + w, y + h, down ? 0x99FFFFFF : 0x66000000);
+                  fr.drawString(label, x + (w - fr.getStringWidth(label)) / 2, y + (h - 8) / 2,
+                          down ? 0x000000 : 0xFFFFFF);
+              }
+
+              private void drawKeystrokes(int x, int y) {
+                  int s = 18;
+                  box(x + 20, y, s, s, "W", mc.gameSettings.keyBindForward.isKeyDown());
+                  box(x, y + 20, s, s, "A", mc.gameSettings.keyBindLeft.isKeyDown());
+                  box(x + 20, y + 20, s, s, "S", mc.gameSettings.keyBindBack.isKeyDown());
+                  box(x + 40, y + 20, s, s, "D", mc.gameSettings.keyBindRight.isKeyDown());
+                  box(x, y + 40, 29, s, "L " + leftClicks.size(), Mouse.isButtonDown(0));
+                  box(x + 31, y + 40, 29, s, "R " + rightClicks.size(), Mouse.isButtonDown(1));
+                  box(x, y + 60, 60, 10, "", mc.gameSettings.keyBindJump.isKeyDown());
+              }
+
+              private void drawArmor(ScaledResolution sr) {
+                  FontRenderer fr = mc.fontRendererObj;
+                  ItemStack[] stacks = new ItemStack[]{
+                          mc.thePlayer.inventory.armorInventory[3],
+                          mc.thePlayer.inventory.armorInventory[2],
+                          mc.thePlayer.inventory.armorInventory[1],
+                          mc.thePlayer.inventory.armorInventory[0],
+                          mc.thePlayer.getHeldItem()
+                  };
+                  int x = sr.getScaledWidth() - 20;
+                  int y = sr.getScaledHeight() / 2 - 45;
+
+                  for (ItemStack s : stacks) {
+                      if (s != null) {
+                          GlStateManager.pushMatrix();
+                          RenderHelper.enableGUIStandardItemLighting();
+                          mc.getRenderItem().renderItemAndEffectIntoGUI(s, x, y);
+                          RenderHelper.disableStandardItemLighting();
+                          GlStateManager.popMatrix();
+                          if (s.isItemStackDamageable()) {
+                              String t = ModConfig.flag("armorpct")
+                                      ? ((s.getMaxDamage() - s.getItemDamage()) * 100 / Math.max(1, s.getMaxDamage())) + "%"
+                                      : String.valueOf(s.getMaxDamage() - s.getItemDamage());
+                              fr.drawStringWithShadow(t, x - fr.getStringWidth(t) - 2, y + 4, 0xFFFFFF);
+                          }
+                      }
+                      y += 18;
+                  }
+              }
+
+              private void drawPotions(ScaledResolution sr) {
+                  FontRenderer fr = mc.fontRendererObj;
+                  int y = 4;
+                  for (Object o : mc.thePlayer.getActivePotionEffects()) {
+                      PotionEffect pe = (PotionEffect) o;
+                      String name = I18n.format(pe.getEffectName());
+                      if (pe.getAmplifier() > 0) name += " " + (pe.getAmplifier() + 1);
+                      String t = name + " " + Potion.getDurationString(pe);
+                      fr.drawStringWithShadow(t, sr.getScaledWidth() - fr.getStringWidth(t) - 4, y, 0xFFFFFF);
+                      y += 10;
+                  }
+              }
+          }
+          LEGITEOF
+          cat > proj/src/main/java/com/legitclient/MenuScreen.java <<'LEGITEOF'
+          package com.legitclient;
+
+          import net.minecraft.client.gui.FontRenderer;
+          import net.minecraft.client.gui.Gui;
+          import net.minecraft.client.gui.GuiScreen;
+          import net.minecraft.client.gui.GuiTextField;
+          import net.minecraft.client.gui.ScaledResolution;
+          import net.minecraftforge.fml.client.FMLClientHandler;
+          import net.minecraftforge.fml.client.IModGuiFactory;
+          import net.minecraftforge.fml.common.Loader;
+          import net.minecraftforge.fml.common.ModContainer;
+          import org.lwjgl.input.Keyboard;
+          import org.lwjgl.input.Mouse;
+          import org.lwjgl.opengl.GL11;
+
+          import java.io.IOException;
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.List;
+
+          /** Menu no estilo do OneConfig: sidebar, cards de mods, switches. */
+          public class MenuScreen extends GuiScreen {
+              private static final int BG = 0xF0101318;
+              private static final int SIDE = 0xFF0B0D11;
+              private static final int CARD = 0xFF1A1E26;
+              private static final int CARD_HOVER = 0xFF232A37;
+              private static final int ACCENT = 0xFF2D6FF7;
+              private static final int OFF = 0xFF3A4152;
+              private static final int TXT = 0xFFFFFFFF;
+              private static final int SUB = 0xFF8B93A5;
+              private static final int[] ICON = {0xFF2D6FF7, 0xFF8B5CF6, 0xFF10B981, 0xFFF59E0B, 0xFFEF4444, 0xFF06B6D4};
+
+              private static final String[] TABS = {"Mods", "Client", "FPS", "Anim", "Extras"};
+              private static final String[] TOGGLES = {
+                      "FPS", "CPS", "Coordenadas", "Keystrokes", "Armadura", "Poções", "Toggle Sprint", "Zoom (tecla C)"
+              };
+
+              private static int tab = 0;
+              private static String lastSearch = "";
+
+              // ---------- mods instalados ----------
+              private static class Entry {
+                  String name, version, id;
+                  IModGuiFactory factory;
+                  boolean self;
+              }
+
+              private static List<Entry> allMods;
+
+              private static void loadMods() {
+                  if (allMods != null) return;
+                  allMods = new ArrayList<Entry>();
+                  for (ModContainer m : Loader.instance().getActiveModList()) {
+                      String id = m.getModId();
+                      if (id.equals("mcp") || id.equals("FML") || id.equals("Forge")) continue;
+                      Entry e = new Entry();
+                      e.name = m.getName();
+                      e.version = m.getVersion();
+                      e.id = id;
+                      e.self = id.equals(LegitClient.MODID);
+                      try {
+                          IModGuiFactory f = FMLClientHandler.instance().getGuiFactoryFor(m);
+                          if (f != null && f.mainConfigGuiClass() != null) e.factory = f;
+                      } catch (Throwable ignored) {
+                      }
+                      allMods.add(e);
+                  }
+                  Collections.sort(allMods, new Comparator<Entry>() {
+                      @Override
+                      public int compare(Entry a, Entry b) {
+                          if (a.self != b.self) return a.self ? -1 : 1;
+                          return a.name.compareToIgnoreCase(b.name);
+                      }
+                  });
+              }
+
+              private List<Entry> filtered() {
+                  loadMods();
+                  String q = search == null ? "" : search.getText().trim().toLowerCase();
+                  List<Entry> out = new ArrayList<Entry>();
+                  for (Entry e : allMods) {
+                      if (q.isEmpty() || e.name.toLowerCase().contains(q) || e.id.toLowerCase().contains(q)) out.add(e);
+                  }
+                  return out;
+              }
+
+              // ---------- estado de layout ----------
+              private static class Hit {
+                  int x, y, w, h;
+                  boolean clip;
+                  Runnable r;
+              }
+
+              private final List<Hit> hits = new ArrayList<Hit>();
+              private int mx, my;
+              private int px, py, pw, ph, sw;
+              private int vx, vy, vw, vh;
+              private int sx, sy, sww;
+              private int scroll, contentH;
+              private boolean pressed, dragMoved;
+              private int pressX, pressY, lastDragY;
+              private String msg = "";
+              private long msgUntil;
+              private GuiTextField search;
+
+              private void layout() {
+                  pw = Math.min(width - 12, 440);
+                  ph = Math.min(height - 12, 260);
+                  px = (width - pw) / 2;
+                  py = (height - ph) / 2;
+                  sw = pw < 300 ? 60 : 78;
+                  vx = px + sw + 8;
+                  vy = py + 32;
+                  vw = pw - sw - 16;
+                  vh = ph - 32 - 18;
+                  sww = Math.min(120, (pw - sw) / 2 - 10);
+                  sx = px + pw - sww - 28;
+                  sy = py + 6;
+              }
+
+              @Override
+              public void initGui() {
+                  layout();
+                  Keyboard.enableRepeatEvents(true);
+                  search = new GuiTextField(0, fontRendererObj, sx + 6, sy + 4, sww - 12, 10);
+                  search.setEnableBackgroundDrawing(false);
+                  search.setMaxStringLength(24);
+                  search.setText(lastSearch);
+              }
+
+              @Override
+              public void onGuiClosed() {
+                  Keyboard.enableRepeatEvents(false);
+                  ModConfig.save();
+              }
+
+              @Override
+              public void updateScreen() {
+                  if (search != null) search.updateCursorCounter();
+              }
+
+              @Override
+              public boolean doesGuiPauseGame() {
+                  return false;
+              }
+
+              // ---------- desenho ----------
+              private static void rr(int x, int y, int w, int h, int r, int c) {
+                  r = Math.min(r, Math.min(w, h) / 2);
+                  if (r <= 0) {
+                      Gui.drawRect(x, y, x + w, y + h, c);
+                      return;
+                  }
+                  Gui.drawRect(x, y + r, x + w, y + h - r, c);
+                  for (int i = 0; i < r; i++) {
+                      double dy = r - i - 0.5;
+                      int inset = r - (int) Math.round(Math.sqrt(r * r - dy * dy));
+                      Gui.drawRect(x + inset, y + i, x + w - inset, y + i + 1, c);
+                      Gui.drawRect(x + inset, y + h - 1 - i, x + w - inset, y + h - i, c);
+                  }
+              }
+
+              private boolean over(int x, int y, int w, int h) {
+                  return mx >= x && mx < x + w && my >= y && my < y + h;
+              }
+
+              private boolean inView(int x, int y) {
+                  return x >= vx && x < vx + vw && y >= vy && y < vy + vh;
+              }
+
+              private void hitFixed(int x, int y, int w, int h, Runnable r) {
+                  hit(x, y, w, h, r);
+                  hits.get(hits.size() - 1).clip = false;
+              }
+
+              private void hit(int x, int y, int w, int h, Runnable r) {
+                  Hit hh = new Hit();
+                  hh.clip = true;
+                  hh.x = x;
+                  hh.y = y;
+                  hh.w = w;
+                  hh.h = h;
+                  hh.r = r;
+                  hits.add(hh);
+              }
+
+              private void say(String s) {
+                  msg = s;
+                  msgUntil = System.currentTimeMillis() + 2500;
+              }
+
+              private void scissor(boolean on) {
+                  if (!on) {
+                      GL11.glDisable(GL11.GL_SCISSOR_TEST);
+                      return;
+                  }
+                  int f = new ScaledResolution(mc).getScaleFactor();
+                  GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                  GL11.glScissor(vx * f, mc.displayHeight - (vy + vh) * f, vw * f, vh * f);
+              }
+
+              @Override
+              public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+                  mx = mouseX;
+                  my = mouseY;
+                  hits.clear();
+                  layout();
+                  FontRenderer fr = fontRendererObj;
+
+                  Gui.drawRect(0, 0, width, height, 0xA0000000);
+                  rr(px, py, pw, ph, 6, BG);
+                  rr(px, py, sw, ph, 6, SIDE);
+                  Gui.drawRect(px + sw - 6, py, px + sw, py + ph, SIDE);
+
+                  // logo + abas
+                  fr.drawStringWithShadow("Legit", px + 10, py + 9, TXT);
+                  fr.drawStringWithShadow("Client", px + 10, py + 19, ACCENT);
+                  for (int i = 0; i < TABS.length; i++) {
+                      final int idx = i;
+                      int ty = py + 38 + i * 22;
+                      boolean hov = over(px + 6, ty, sw - 12, 20);
+                      if (tab == i) {
+                          rr(px + 6, ty, sw - 12, 20, 4, 0xFF1F2937);
+                          rr(px + 6, ty + 4, 2, 12, 1, ACCENT);
+                      } else if (hov) {
+                          rr(px + 6, ty, sw - 12, 20, 4, 0xFF151922);
+                      }
+                      fr.drawStringWithShadow(TABS[i], px + 16, ty + 6, tab == i ? TXT : SUB);
+                      hitFixed(px + 6, ty, sw - 12, 20, new Runnable() {
+                          @Override
+                          public void run() {
+                              tab = idx;
+                              scroll = 0;
+                              if (search != null) {
+                                  search.setFocused(false);
+                                  search.setText("");
+                                  lastSearch = "";
+                              }
+                          }
+                      });
+                  }
+                  fr.drawString("v1.0.0", px + 10, py + ph - 14, SUB);
+
+                  // botão fechar
+                  boolean hc = over(px + pw - 20, py + 6, 14, 14);
+                  rr(px + pw - 20, py + 6, 14, 14, 4, hc ? 0xFFEF4444 : CARD);
+                  drawCenteredString(fr, "x", px + pw - 13, py + 10, TXT);
+                  hitFixed(px + pw - 20, py + 6, 14, 14, new Runnable() {
+                      @Override
+                      public void run() {
+                          mc.displayGuiScreen(null);
+                      }
+                  });
+
+                  // título + busca
+                  int cx = px + sw + 10;
+                  int max = Math.max(0, contentH - vh);
+                  if (scroll > max) scroll = max;
+                  if (scroll < 0) scroll = 0;
+
+                  if (tab == 0 || tab == 1) {
+                      fr.drawStringWithShadow(tab == 0 ? "Mods (" + filtered().size() + ")" : "Módulos", cx, py + 10, TXT);
+                      rr(sx, sy, sww, 18, 4, CARD);
+                      search.xPosition = sx + 6;
+                      search.yPosition = sy + 5;
+                      search.drawTextBox();
+                      if (search.getText().isEmpty() && !search.isFocused()) {
+                          fr.drawString("Pesquisar...", sx + 6, sy + 5, SUB);
+                      }
+                  } else {
+                      fr.drawStringWithShadow(tab == 2 ? "FPS boost" : (tab == 3 ? "Animações" : "Extras"), cx, py + 10, TXT);
+                  }
+
+                  // conteúdo com scroll
+                  scissor(true);
+                  if (tab == 0) drawMods(fr);
+                  else if (tab == 1) drawClient(fr);
+                  else if (tab == 2) drawFps(fr);
+                  else if (tab == 3) drawAnim(fr);
+                  else drawExtras(fr);
+                  scissor(false);
+
+                  if (contentH > vh) {
+                      int th = 20;
+                      int ty = vy + (int) ((float) scroll / Math.max(1, contentH - vh) * (vh - th));
+                      rr(vx + vw + 1, ty, 3, th, 1, OFF);
+                  }
+
+                  if (System.currentTimeMillis() < msgUntil) {
+                      fr.drawStringWithShadow(msg, vx, py + ph - 13, 0xFF7FB0FF);
+                  }
+              }
+
+              private void drawMods(FontRenderer fr) {
+                  List<Entry> list = filtered();
+                  int cols = Math.max(1, (vw + 6) / 146);
+                  int cw = (vw - (cols - 1) * 6) / cols;
+                  int ch = 34;
+                  int rows = (list.size() + cols - 1) / cols;
+                  contentH = rows * (ch + 6);
+
+                  if (list.isEmpty()) {
+                      fr.drawString("Nenhum mod encontrado.", vx + 4, vy + 6, SUB);
+                      return;
+                  }
+                  for (int i = 0; i < list.size(); i++) {
+                      final Entry e = list.get(i);
+                      int x = vx + (i % cols) * (cw + 6);
+                      int y = vy + (i / cols) * (ch + 6) - scroll;
+                      if (y + ch < vy || y > vy + vh) continue;
+
+                      boolean hov = over(x, y, cw, ch) && inView(mx, my);
+                      rr(x, y, cw, ch, 5, hov ? CARD_HOVER : CARD);
+                      rr(x + 6, y + 6, 22, 22, 5, ICON[Math.abs(e.id.hashCode()) % ICON.length]);
+                      String letter = e.name.isEmpty() ? "?" : e.name.substring(0, 1).toUpperCase();
+                      drawCenteredString(fr, letter, x + 17, y + 13, TXT);
+
+                      String badge = e.self ? "CLIENT" : (e.factory != null ? "CONFIG" : null);
+                      int bw = badge == null ? 0 : fr.getStringWidth(badge) + 8;
+                      int tx = x + 34;
+                      fr.drawStringWithShadow(fr.trimStringToWidth(e.name, cw - 40), tx, y + 7, TXT);
+                      String ver = e.version == null ? "" : "v" + e.version;
+                      fr.drawString(fr.trimStringToWidth(ver, cw - 40 - bw - 4), tx, y + 19, SUB);
+                      if (badge != null) {
+                          int bx = x + cw - bw - 6;
+                          rr(bx, y + 18, bw, 11, 5, ACCENT);
+                          fr.drawString(badge, bx + 4, y + 20, TXT);
+                      }
+                      hit(x, y, cw, ch, new Runnable() {
+                          @Override
+                          public void run() {
+                              openMod(e);
+                          }
+                      });
+                  }
+              }
+
+              private void openMod(Entry e) {
+                  if (e.self) {
+                      tab = 1;
+                      scroll = 0;
+                      return;
+                  }
+                  if (e.factory == null) {
+                      say("Esse mod não tem tela de configuração.");
+                      return;
+                  }
+                  try {
+                      GuiScreen s = e.factory.mainConfigGuiClass().getConstructor(GuiScreen.class).newInstance(this);
+                      mc.displayGuiScreen(s);
+                  } catch (Throwable t) {
+                      say("Não foi possível abrir a config desse mod.");
+                  }
+              }
+
+              // ---------- aba Client ----------
+              private static boolean get(int id) {
+                  switch (id) {
+                      case 0: return ModConfig.fps;
+                      case 1: return ModConfig.cps;
+                      case 2: return ModConfig.coords;
+                      case 3: return ModConfig.keystrokes;
+                      case 4: return ModConfig.armor;
+                      case 5: return ModConfig.potions;
+                      case 6: return ModConfig.toggleSprint;
+                      case 7: return ModConfig.zoom;
+                      case 8: return ModConfig.fpsBoostOnStart;
+                      case 9: return ModConfig.noReequip;
+                      case 10: return ModConfig.itemCustom;
+                      case 11: return ModConfig.modernBackwalk;
+                  }
+                  return false;
+              }
+
+              private static void toggle(int id) {
+                  switch (id) {
+                      case 0: ModConfig.fps = !ModConfig.fps; break;
+                      case 1: ModConfig.cps = !ModConfig.cps; break;
+                      case 2: ModConfig.coords = !ModConfig.coords; break;
+                      case 3: ModConfig.keystrokes = !ModConfig.keystrokes; break;
+                      case 4: ModConfig.armor = !ModConfig.armor; break;
+                      case 5: ModConfig.potions = !ModConfig.potions; break;
+                      case 6: ModConfig.toggleSprint = !ModConfig.toggleSprint; break;
+                      case 7: ModConfig.zoom = !ModConfig.zoom; break;
+                      case 8: ModConfig.fpsBoostOnStart = !ModConfig.fpsBoostOnStart; break;
+                      case 9: ModConfig.noReequip = !ModConfig.noReequip; break;
+                      case 10: ModConfig.itemCustom = !ModConfig.itemCustom; break;
+                      case 11: ModConfig.modernBackwalk = !ModConfig.modernBackwalk; break;
+                  }
+              }
+
+              private void switchRow(FontRenderer fr, int x, int y, int w, String label, final int id) {
+                  boolean hov = over(x, y, w, 26) && inView(mx, my);
+                  rr(x, y, w, 26, 5, hov ? CARD_HOVER : CARD);
+                  fr.drawStringWithShadow(fr.trimStringToWidth(label, w - 44), x + 8, y + 9, TXT);
+                  boolean on = get(id);
+                  rr(x + w - 32, y + 7, 24, 12, 6, on ? ACCENT : OFF);
+                  rr(on ? x + w - 20 : x + w - 31, y + 8, 10, 10, 5, TXT);
+                  hit(x, y, w, 26, new Runnable() {
+                      @Override
+                      public void run() {
+                          toggle(id);
+                      }
+                  });
+              }
+
+              private void flagRow(FontRenderer fr, int x, int y, int w, String label, final String key) {
+                  boolean hov = over(x, y, w, 26) && inView(mx, my);
+                  rr(x, y, w, 26, 5, hov ? CARD_HOVER : CARD);
+                  fr.drawStringWithShadow(fr.trimStringToWidth(label, w - 44), x + 8, y + 9, TXT);
+                  boolean on = ModConfig.flag(key);
+                  rr(x + w - 32, y + 7, 24, 12, 6, on ? ACCENT : OFF);
+                  rr(on ? x + w - 20 : x + w - 31, y + 8, 10, 10, 5, TXT);
+                  hit(x, y, w, 26, new Runnable() {
+                      @Override
+                      public void run() {
+                          ModConfig.toggleFlag(key);
+                      }
+                  });
+              }
+
+              private void drawClient(FontRenderer fr) {
+                  int cols = vw >= 250 ? 2 : 1;
+                  int cw = (vw - (cols - 1) * 6) / cols;
+                  String q = search == null ? "" : search.getText().trim().toLowerCase();
+                  boolean searching = !q.isEmpty();
+
+                  List<String[]> items = new ArrayList<String[]>();
+                  if (!searching) items.add(new String[]{"#", "Principais"});
+                  for (int i = 0; i < TOGGLES.length; i++) {
+                      if (!searching || TOGGLES[i].toLowerCase().contains(q)) items.add(new String[]{"c" + i, TOGGLES[i]});
+                  }
+                  for (String[] m : ModConfig.EXTRA_MODS) {
+                      if (m[0].startsWith("#")) {
+                          if (!searching) items.add(m);
+                      } else if (!searching || m[1].toLowerCase().contains(q)) {
+                          items.add(m);
+                      }
+                  }
+
+                  int yy = 0, col = 0;
+                  for (String[] it : items) {
+                      if (it[0].startsWith("#")) {
+                          if (col != 0) {
+                              col = 0;
+                              yy += 32;
+                          }
+                          int hy = vy + yy - scroll;
+                          if (!(hy + 14 < vy || hy > vy + vh)) fr.drawStringWithShadow(it[1], vx + 2, hy + 4, ACCENT);
+                          yy += 18;
+                          continue;
+                      }
+                      int x = vx + col * (cw + 6);
+                      int y = vy + yy - scroll;
+                      if (!(y + 26 < vy || y > vy + vh)) {
+                          if (it[0].matches("c\\d+")) {
+                              switchRow(fr, x, y, cw, it[1], Integer.parseInt(it[0].substring(1)));
+                          } else {
+                              flagRow(fr, x, y, cw, it[1], it[0]);
+                          }
+                      }
+                      col++;
+                      if (col == cols) {
+                          col = 0;
+                          yy += 32;
+                      }
+                  }
+                  if (col != 0) yy += 32;
+                  if (items.isEmpty()) fr.drawString("Nenhum módulo encontrado.", vx + 4, vy + 6, SUB);
+                  contentH = yy;
+              }
+
+              // ---------- aba FPS ----------
+              private void drawFps(FontRenderer fr) {
+                  int y = vy - scroll;
+                  int w = vw;
+
+                  @SuppressWarnings("unchecked")
+                  List<String> lines = fr.listFormattedStringToWidth(
+                          "Ajusta só as opções de vídeo do próprio jogo: gráficos rápidos, sem nuvens, "
+                                  + "menos partículas, sem AO e sombras, VBO ligado e vsync desligado.", w - 16);
+                  int ch = 10 + lines.size() * 10;
+                  rr(vx, y, w, ch, 5, CARD);
+                  for (int i = 0; i < lines.size(); i++) {
+                      fr.drawString(lines.get(i), vx + 8, y + 7 + i * 10, SUB);
+                  }
+                  y += ch + 6;
+
+                  boolean hov = over(vx, y, w, 24) && inView(mx, my);
+                  rr(vx, y, w, 24, 5, hov ? 0xFF4A82FF : ACCENT);
+                  drawCenteredString(fr, "Aplicar FPS boost agora", vx + w / 2, y + 8, TXT);
+                  hit(vx, y, w, 24, new Runnable() {
+                      @Override
+                      public void run() {
+                          FpsBoost.apply();
+                          say("FPS boost aplicado!");
+                      }
+                  });
+                  y += 30;
+
+                  switchRow(fr, vx, y, w, "Aplicar ao iniciar o jogo", 8);
+                  y += 32;
+
+                  rr(vx, y, w, 26, 5, CARD);
+                  fr.drawStringWithShadow("Distância máx.: " + ModConfig.renderDistance + " chunks", vx + 8, y + 9, TXT);
+                  int bx = vx + w - 44;
+                  rr(bx, y + 5, 16, 16, 4, over(bx, y + 5, 16, 16) ? CARD_HOVER : OFF);
+                  drawCenteredString(fr, "-", bx + 8, y + 9, TXT);
+                  hit(bx, y + 5, 16, 16, new Runnable() {
+                      @Override
+                      public void run() {
+                          ModConfig.renderDistance = Math.max(2, ModConfig.renderDistance - 1);
+                      }
+                  });
+                  int bx2 = vx + w - 24;
+                  rr(bx2, y + 5, 16, 16, 4, over(bx2, y + 5, 16, 16) ? CARD_HOVER : OFF);
+                  drawCenteredString(fr, "+", bx2 + 8, y + 9, TXT);
+                  hit(bx2, y + 5, 16, 16, new Runnable() {
+                      @Override
+                      public void run() {
+                          ModConfig.renderDistance = Math.min(16, ModConfig.renderDistance + 1);
+                      }
+                  });
+                  y += 32;
+
+                  fr.drawString("FPS atual: " + net.minecraft.client.Minecraft.getDebugFPS(), vx + 2, y + 2, SUB);
+                  contentH = (y + 14) - (vy - scroll);
+              }
+
+              // ---------- aba Anim (estilo OverflowAnimations) ----------
+              private static int clamp(int v, int lo, int hi) {
+                  return Math.max(lo, Math.min(hi, v));
+              }
+
+              private static String sgn(int v) {
+                  return v > 0 ? "+" + v : String.valueOf(v);
+              }
+
+              private void stepRow(FontRenderer fr, int x, int y, int w, String text,
+                                   final Runnable minus, final Runnable plus) {
+                  rr(x, y, w, 26, 5, CARD);
+                  fr.drawStringWithShadow(fr.trimStringToWidth(text, w - 56), x + 8, y + 9, TXT);
+                  int bx = x + w - 44;
+                  rr(bx, y + 5, 16, 16, 4, over(bx, y + 5, 16, 16) && inView(mx, my) ? CARD_HOVER : OFF);
+                  drawCenteredString(fr, "-", bx + 8, y + 9, TXT);
+                  hit(bx, y + 5, 16, 16, minus);
+                  int bx2 = x + w - 24;
+                  rr(bx2, y + 5, 16, 16, 4, over(bx2, y + 5, 16, 16) && inView(mx, my) ? CARD_HOVER : OFF);
+                  drawCenteredString(fr, "+", bx2 + 8, y + 9, TXT);
+                  hit(bx2, y + 5, 16, 16, plus);
+              }
+
+              private void drawAnim(FontRenderer fr) {
+                  int cols = vw >= 320 ? 2 : 1;
+                  int cw = (vw - (cols - 1) * 6) / cols;
+                  final int total = 11;
+                  for (int i = 0; i < total; i++) {
+                      int x = vx + (i % cols) * (cw + 6);
+                      int y = vy + (i / cols) * 32 - scroll;
+                      boolean visible = !(y + 26 < vy || y > vy + vh);
+                      if (!visible) continue;
+                      switch (i) {
+                          case 0:
+                              switchRow(fr, x, y, cw, "Sem animação ao trocar item", 9);
+                              break;
+                          case 1:
+                              stepRow(fr, x, y, cw, "Velocidade do swing: " + ModConfig.swingSpeed + "%",
+                                      new Runnable() { public void run() { ModConfig.swingSpeed = clamp(ModConfig.swingSpeed - 25, 25, 300); } },
+                                      new Runnable() { public void run() { ModConfig.swingSpeed = clamp(ModConfig.swingSpeed + 25, 25, 300); } });
+                              break;
+                          case 2:
+                              switchRow(fr, x, y, cw, "Item personalizado (1ª pessoa)", 10);
+                              break;
+                          case 3:
+                              stepRow(fr, x, y, cw, "Posição X: " + sgn(ModConfig.itemX),
+                                      new Runnable() { public void run() { ModConfig.itemX = clamp(ModConfig.itemX - 1, -40, 40); } },
+                                      new Runnable() { public void run() { ModConfig.itemX = clamp(ModConfig.itemX + 1, -40, 40); } });
+                              break;
+                          case 4:
+                              stepRow(fr, x, y, cw, "Posição Y: " + sgn(ModConfig.itemY),
+                                      new Runnable() { public void run() { ModConfig.itemY = clamp(ModConfig.itemY - 1, -40, 40); } },
+                                      new Runnable() { public void run() { ModConfig.itemY = clamp(ModConfig.itemY + 1, -40, 40); } });
+                              break;
+                          case 5:
+                              stepRow(fr, x, y, cw, "Posição Z: " + sgn(ModConfig.itemZ),
+                                      new Runnable() { public void run() { ModConfig.itemZ = clamp(ModConfig.itemZ - 1, -40, 40); } },
+                                      new Runnable() { public void run() { ModConfig.itemZ = clamp(ModConfig.itemZ + 1, -40, 40); } });
+                              break;
+                          case 6:
+                              stepRow(fr, x, y, cw, "Rotação X: " + ModConfig.itemRotX + "°",
+                                      new Runnable() { public void run() { ModConfig.itemRotX = clamp(ModConfig.itemRotX - 5, -180, 180); } },
+                                      new Runnable() { public void run() { ModConfig.itemRotX = clamp(ModConfig.itemRotX + 5, -180, 180); } });
+                              break;
+                          case 7:
+                              stepRow(fr, x, y, cw, "Rotação Y: " + ModConfig.itemRotY + "°",
+                                      new Runnable() { public void run() { ModConfig.itemRotY = clamp(ModConfig.itemRotY - 5, -180, 180); } },
+                                      new Runnable() { public void run() { ModConfig.itemRotY = clamp(ModConfig.itemRotY + 5, -180, 180); } });
+                              break;
+                          case 8:
+                              stepRow(fr, x, y, cw, "Rotação Z: " + ModConfig.itemRotZ + "°",
+                                      new Runnable() { public void run() { ModConfig.itemRotZ = clamp(ModConfig.itemRotZ - 5, -180, 180); } },
+                                      new Runnable() { public void run() { ModConfig.itemRotZ = clamp(ModConfig.itemRotZ + 5, -180, 180); } });
+                              break;
+                          case 10:
+                              switchRow(fr, x, y, cw, "Andar de costas moderno", 11);
+                              break;
+                          case 9:
+                              stepRow(fr, x, y, cw, "Tamanho: " + ModConfig.itemScale + "%",
+                                      new Runnable() { public void run() { ModConfig.itemScale = clamp(ModConfig.itemScale - 5, 30, 200); } },
+                                      new Runnable() { public void run() { ModConfig.itemScale = clamp(ModConfig.itemScale + 5, 30, 200); } });
+                              break;
+                      }
+                  }
+
+                  int y = vy + ((total + cols - 1) / cols) * 32 - scroll;
+                  boolean hov = over(vx, y, vw, 24) && inView(mx, my);
+                  rr(vx, y, vw, 24, 5, hov ? 0xFF4A82FF : ACCENT);
+                  drawCenteredString(fr, "Resetar item", vx + vw / 2, y + 8, TXT);
+                  hit(vx, y, vw, 24, new Runnable() {
+                      @Override
+                      public void run() {
+                          ModConfig.itemX = 0;
+                          ModConfig.itemY = 0;
+                          ModConfig.itemZ = 0;
+                          ModConfig.itemRotX = 0;
+                          ModConfig.itemRotY = 0;
+                          ModConfig.itemRotZ = 0;
+                          ModConfig.itemScale = 100;
+                          say("Item resetado.");
+                      }
+                  });
+                  fr.drawString("Os ajustes de item valem pro item na mão.", vx + 2, y + 30, SUB);
+                  contentH = (y + 42) - (vy - scroll);
+              }
+
+              // ---------- aba Extras ----------
+              private static final String[] CROSS_STYLES = {"Cruz", "Ponto", "Cruz + ponto"};
+              private static final String[] TIMES = {"Desligada", "Dia", "Pôr do sol", "Noite"};
+
+              private static int cyc(int v, int n, int d) {
+                  return (v + d + n) % n;
+              }
+
+              private void drawExtras(FontRenderer fr) {
+                  int cols = vw >= 320 ? 2 : 1;
+                  int cw = (vw - (cols - 1) * 6) / cols;
+                  final int total = 11;
+                  for (int i = 0; i < total; i++) {
+                      int x = vx + (i % cols) * (cw + 6);
+                      int y = vy + (i / cols) * 32 - scroll;
+                      if (y + 26 < vy || y > vy + vh) continue;
+                      int nc = ModConfig.COLORS.length;
+                      switch (i) {
+                          case 0:
+                              stepRow(fr, x, y, cw, "Cor do HUD: " + ModConfig.COLOR_NAMES[cyc(ModConfig.hudColor, nc, 0)],
+                                      () -> ModConfig.hudColor = cyc(ModConfig.hudColor, ModConfig.COLORS.length, -1),
+                                      () -> ModConfig.hudColor = cyc(ModConfig.hudColor, ModConfig.COLORS.length, 1));
+                              break;
+                          case 1:
+                              stepRow(fr, x, y, cw, "Tamanho do HUD: " + ModConfig.hudScale + "%",
+                                      () -> ModConfig.hudScale = clamp(ModConfig.hudScale - 10, 50, 200),
+                                      () -> ModConfig.hudScale = clamp(ModConfig.hudScale + 10, 50, 200));
+                              break;
+                          case 2:
+                              stepRow(fr, x, y, cw, "Mira: " + CROSS_STYLES[ModConfig.crossStyle],
+                                      () -> ModConfig.crossStyle = cyc(ModConfig.crossStyle, 3, -1),
+                                      () -> ModConfig.crossStyle = cyc(ModConfig.crossStyle, 3, 1));
+                              break;
+                          case 3:
+                              stepRow(fr, x, y, cw, "Cor da mira: " + ModConfig.COLOR_NAMES[cyc(ModConfig.crossColor, nc, 0)],
+                                      () -> ModConfig.crossColor = cyc(ModConfig.crossColor, ModConfig.COLORS.length, -1),
+                                      () -> ModConfig.crossColor = cyc(ModConfig.crossColor, ModConfig.COLORS.length, 1));
+                              break;
+                          case 4:
+                              stepRow(fr, x, y, cw, "Tamanho da mira: " + ModConfig.crossSize,
+                                      () -> ModConfig.crossSize = clamp(ModConfig.crossSize - 1, 2, 12),
+                                      () -> ModConfig.crossSize = clamp(ModConfig.crossSize + 1, 2, 12));
+                              break;
+                          case 5:
+                              stepRow(fr, x, y, cw, "Cor do contorno: " + ModConfig.COLOR_NAMES[cyc(ModConfig.outlineColor, nc, 0)],
+                                      () -> ModConfig.outlineColor = cyc(ModConfig.outlineColor, ModConfig.COLORS.length, -1),
+                                      () -> ModConfig.outlineColor = cyc(ModConfig.outlineColor, ModConfig.COLORS.length, 1));
+                              break;
+                          case 6:
+                              stepRow(fr, x, y, cw, "Hora fixa: " + TIMES[ModConfig.fixedTime],
+                                      () -> ModConfig.fixedTime = cyc(ModConfig.fixedTime, 4, -1),
+                                      () -> ModConfig.fixedTime = cyc(ModConfig.fixedTime, 4, 1));
+                              break;
+                          case 7:
+                              stepRow(fr, x, y, cw, "Nível de zoom: " + ModConfig.zoomLevel + "x",
+                                      () -> ModConfig.zoomLevel = clamp(ModConfig.zoomLevel - 1, 2, 10),
+                                      () -> ModConfig.zoomLevel = clamp(ModConfig.zoomLevel + 1, 2, 10));
+                              break;
+                          case 8:
+                              stepRow(fr, x, y, cw, "HUD posição X: " + ModConfig.hudX,
+                                      () -> ModConfig.hudX = clamp(ModConfig.hudX - 5, 0, 600),
+                                      () -> ModConfig.hudX = clamp(ModConfig.hudX + 5, 0, 600));
+                              break;
+                          case 9:
+                              stepRow(fr, x, y, cw, "HUD posição Y: " + ModConfig.hudY,
+                                      () -> ModConfig.hudY = clamp(ModConfig.hudY - 5, 0, 400),
+                                      () -> ModConfig.hudY = clamp(ModConfig.hudY + 5, 0, 400));
+                              break;
+                          case 10:
+                              stepRow(fr, x, y, cw, "Partículas por hit: " + ModConfig.partCount,
+                                      () -> ModConfig.partCount = clamp(ModConfig.partCount - 1, 1, 5),
+                                      () -> ModConfig.partCount = clamp(ModConfig.partCount + 1, 1, 5));
+                              break;
+                      }
+                  }
+                  int y = vy + ((total + cols - 1) / cols) * 32 - scroll;
+                  fr.drawString("Ligue os módulos na aba Client.", vx + 2, y + 2, SUB);
+                  contentH = (y + 14) - (vy - scroll);
+              }
+
+              // ---------- entrada (mouse com arrastar pra rolar, bom pra touch) ----------
+              @Override
+              protected void mouseClicked(int x, int y, int button) throws IOException {
+                  pressed = true;
+                  dragMoved = false;
+                  pressX = x;
+                  pressY = y;
+                  lastDragY = y;
+                  if (search != null) {
+                      search.setFocused((tab == 0 || tab == 1) && x >= sx && x < sx + sww && y >= sy && y < sy + 18);
+                  }
+              }
+
+              @Override
+              protected void mouseClickMove(int x, int y, int button, long time) {
+                  if (!pressed) return;
+                  if (Math.abs(x - pressX) > 4 || Math.abs(y - pressY) > 4) dragMoved = true;
+                  if (dragMoved && inView(pressX, pressY)) {
+                      scroll -= (y - lastDragY);
+                      int max = Math.max(0, contentH - vh);
+                      if (scroll < 0) scroll = 0;
+                      if (scroll > max) scroll = max;
+                  }
+                  lastDragY = y;
+              }
+
+              @Override
+              protected void mouseReleased(int x, int y, int state) {
+                  if (pressed && !dragMoved) {
+                      for (int i = hits.size() - 1; i >= 0; i--) {
+                          Hit h = hits.get(i);
+                          if (x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) {
+                              if (!h.clip || inView(x, y)) {
+                                  h.r.run();
+                                  break;
+                              }
+                          }
+                      }
+                  }
+                  pressed = false;
+              }
+
+              @Override
+              public void handleMouseInput() throws IOException {
+                  super.handleMouseInput();
+                  int d = Mouse.getEventDWheel();
+                  if (d != 0) {
+                      scroll -= Integer.signum(d) * 20;
+                      int max = Math.max(0, contentH - vh);
+                      if (scroll < 0) scroll = 0;
+                      if (scroll > max) scroll = max;
+                  }
+              }
+
+              @Override
+              protected void keyTyped(char c, int key) throws IOException {
+                  if (search != null && search.isFocused() && key != Keyboard.KEY_ESCAPE) {
+                      search.textboxKeyTyped(c, key);
+                      lastSearch = search.getText();
+                      scroll = 0;
+                      return;
+                  }
+                  super.keyTyped(c, key);
+              }
+          }
+          LEGITEOF
+
+      - name: Instalar Gradle 2.14.1
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
+          unzip -q gradle-2.14.1-bin.zip
+          echo "$PWD/gradle-2.14.1/bin" >> $GITHUB_PATH
+
+      - name: Compilar
+        working-directory: proj
+        run: gradle setupCIWorkspace build --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LegitClient
+          path: proj/build/libs/LegitClient-1.0.0.jar
